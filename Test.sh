@@ -1,35 +1,55 @@
 #!/bin/bash
 
-# 检查用户输入的选项
-while getopts ":h" option; do
-  case $option in
-    h)
-      echo "Usage: $0 [-h] [--info|--update]"
-      echo "Options:"
-      echo "  -h, --help      Show this help message and exit"
-      echo "  --info          Display system information"
-      echo "  --update        Update the system"
-      exit 0
-      ;;
-    \?)
-      echo "Invalid option: -$OPTARG" >&2
-      exit 1
-      ;;
-  esac
-done
+# Function to display system information
+function display_system_info() {
+    echo "System Information:"
+    uname -a
+    lsb_release -a
+    echo
+}
 
-# 查看系统信息
-if [[ $* == *--info* ]]; then
-  echo "System Information:"
-  echo "Hostname: $(hostname)"
-  echo "Kernel Version: $(uname -r)"
-  echo "Operating System: $(cat /etc/os-release | grep PRETTY_NAME | cut -d '=' -f 2)"
-  echo "CPU Information: $(lscpu | grep 'Model name' | cut -d ':' -f 2 | tr -d ' ')"
-  echo "Memory Information: $(free -h | grep 'Mem:' | awk '{print $2}')"
-fi
+# Function to update the system
+function update_system() {
+    if command -v apt-get &> /dev/null; then
+        sudo apt-get update && sudo apt-get upgrade -y
+    elif command -v yum &> /dev/null; then
+        sudo yum update -y
+    else
+        echo "Unsupported package manager."
+    fi
+}
 
-# 进行系统更新
-if [[ $* == *--update* ]]; then
-  echo "Updating the system..."
-  sudo apt-get update && sudo apt-get upgrade -y && sudo apt-get autoremove -y
-fi
+# Function to clean the system
+function clean_system() {
+    if command -v apt-get &> /dev/null; then
+        sudo apt-get autoclean
+        sudo apt-get autoremove -y
+    elif command -v yum &> /dev/null; then
+        sudo package-cleanup --oldkernels --count=1
+    else
+        echo "Unsupported package manager."
+    fi
+}
+
+# Main script
+echo "选择要执行的操作："
+echo "1. 显示系统信息"
+echo "2. 更新系统和软件包并清理系统"
+read choice
+
+case $choice in
+    1)
+        display_system_info
+        ;;
+    2)
+        if [[ $(uname -s) == "Linux" ]]; then
+            update_system
+            clean_system
+        else
+            echo "Unsupported operating system."
+        fi
+        ;;
+    *)
+        echo "无效的选择"
+        ;;
+esac
