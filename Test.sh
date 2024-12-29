@@ -19,15 +19,10 @@ function display_system_info() {
     echo "虚拟内存:     $(free -m | awk 'NR==3{printf "%.2f/%.2f MB (%.2f%%)\n", $3,$2,$3*100/$2 }')"
     echo "硬盘占用:     $(df -h | awk '$NF=="/"{printf "%s/%s (%s)\n", $3,$2,$5}')"
     echo "-------------"
-    echo "总接收:       $(ifconfig | grep 'RX packets' | awk '{print $5}')"
-    echo "总发送:       $(ifconfig | grep 'TX packets' | awk '{print $5}')"
-    echo "-------------"
     echo "网络算法:     $(sysctl net.ipv4.tcp_congestion_control | cut -d'=' -f2)"
     echo "-------------"
-    echo "运营商:       $(whois $(dig +short myip.opendns.com @resolver1.opendns.com) | grep -i 'OrgName' | cut -d':' -f2 | sed 's/^[ \t]*//')"
     echo "IPv4地址:     $(dig +short myip.opendns.com @resolver1.opendns.com)"
     echo "DNS地址:      $(cat /etc/resolv.conf | grep 'nameserver' | awk '{print $2}' | head -n1)"
-    echo "地理位置:     $(curl -s ipinfo.io | grep 'loc' | cut -d':' -f2 | sed 's/^[ \t]*//')"
     echo "系统时间:     $(date)"
     echo "-------------"
     echo "运行时长:     $(uptime -p)"
@@ -59,12 +54,44 @@ function clean_system() {
     fi
 }
 
+# Function to enable BBR acceleration
+function enable_bbr() {
+    if [[ $(uname -s) == "Linux" ]]; then
+        if [[ $(lsb_release -is) == "Ubuntu" || $(lsb_release -is) == "Debian" ]]; then
+            echo "正在检查当前内核版本..."
+            current_kernel=$(uname -r | awk -F. '{print $1"."$2}')
+            if [[ $(echo "$current_kernel >= 4.9" | bc -l) -eq 1 ]]; then
+                echo "当前内核版本大于等于4.9，支持BBR。"
+                echo "正在检查是否已开启BBR..."
+                if [[ $(sysctl net.ipv4.tcp_congestion_control | grep "bbr") ]]; then
+                    echo "BBR已开启，无需重复操作。"
+                else
+                    echo "正在开启BBR..."
+                    sudo modprobe tcp_bbr
+                    echo "tcp_bbr" | sudo tee -a /etc/modules-load.d/modules.conf
+                    echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.conf
+                    echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf
+                    sudo sysctl -p
+                    echo "BBR已成功开启。"
+                fi
+            else
+                echo "当前内核版本小于4.9，不支持BBR。请先升级内核版本。"
+            fi
+        else
+            echo "此功能仅支持Ubuntu和Debian系统。"
+        fi
+    else
+        echo "Unsupported operating system."
+    fi
+}
+
 # Main script
 while true; do
     clear
     echo "选择要执行的操作："
     echo "1. 显示系统信息"
     echo "2. 更新系统和软件包并清理系统"
+    echo "3. 开启BBR加速（仅限Ubuntu和Debian）"
     echo "0. 退出"
     read choice
 
@@ -82,6 +109,12 @@ while true; do
             else
                 echo "Unsupported operating system."
             fi
+            ;;
+        3)
+            enable_bbr
+            # 使用tput命令设置文本颜色为黄色
+            echo "$(tput setaf 3)按任意键继续...$(tput sgr0)"
+            read -n 1 -s
             ;;
         0)
             exit 0
