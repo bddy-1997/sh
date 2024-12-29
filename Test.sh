@@ -31,7 +31,8 @@ function display_system_info() {
     echo "系统时间:     $(date)"
     echo "-------------"
     echo "运行时长:     $(uptime -p)"
-    echo "按任意键继续..."
+    # 使用tput命令设置文本颜色为黄色
+    echo "$(tput setaf 3)按任意键继续...$(tput sgr0)"
     read -n 1 -s
 }
 
@@ -75,7 +76,8 @@ while true; do
             if [[ $(uname -s) == "Linux" ]]; then
                 update_system
                 clean_system
-                echo "更新系统和软件包并清理系统的工作已完成，按任意键继续..."
+                # 使用tput命令设置文本颜色为黄色
+                echo "$(tput setaf 3)更新系统和软件包并清理系统的工作已完成，按任意键继续...$(tput sgr0)"
                 read -n 1 -s
             else
                 echo "Unsupported operating system."
@@ -86,7 +88,8 @@ while true; do
             ;;
         *)
             echo "无效的选择"
-            echo "按任意键继续..."
+            # 使用tput命令设置文本颜色为黄色
+            echo "$(tput setaf 3)按任意键继续...$(tput sgr0)"
             read -n 1 -s
             ;;
     esac
