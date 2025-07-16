@@ -1,129 +1,244 @@
 #!/bin/bash
 
-# Function to display system information
-function display_system_info() {
-    echo "系统信息查询"
-    echo "-------------"
-    echo "主机名:       $(hostname)"
-    echo "系统版本:     $(lsb_release -d | cut -f2)"
-    echo "Linux版本:    $(uname -r)"
-    echo "-------------"
-    echo "CPU架构:      $(uname -m)"
-    echo "CPU型号:      $(grep 'model name' /proc/cpuinfo | head -n1 | cut -d':' -f2 | sed 's/^[ \t]*//')"
-    echo "CPU核心数:    $(grep -c 'processor' /proc/cpuinfo)"
-    echo "CPU频率:      $(grep 'cpu MHz' /proc/cpuinfo | head -n1 | cut -d':' -f2 | sed 's/^[ \t]*//') GHz"
-    echo "-------------"
-    echo "CPU占用:      $(top -bn1 | grep "Cpu(s)" | awk '{print $2 + $4}')%"
-    echo "系统负载:     $(uptime | awk '{print $10,$11,$12}')"
-    echo "物理内存:     $(free -m | awk 'NR==2{printf "%.2f/%.2f MB (%.2f%%)\n", $3,$2,$3*100/$2 }')"
-    echo "虚拟内存:     $(free -m | awk 'NR==3{printf "%.2f/%.2f MB (%.2f%%)\n", $3,$2,$3*100/$2 }')"
-    echo "硬盘占用:     $(df -h | awk '$NF=="/"{printf "%s/%s (%s)\n", $3,$2,$5}')"
-    echo "-------------"
-    echo "网络算法:     $(sysctl net.ipv4.tcp_congestion_control | cut -d'=' -f2)"
-    echo "-------------"
-    echo "IPv4地址:     $(dig +short myip.opendns.com @resolver1.opendns.com)"
-    echo "DNS地址:      $(cat /etc/resolv.conf | grep 'nameserver' | awk '{print $2}' | head -n1)"
-    echo "系统时间:     $(date)"
-    echo "-------------"
-    echo "运行时长:     $(uptime -p)"
-    # 使用tput命令设置文本颜色为黄色
-    echo "$(tput setaf 3)按任意键继续...$(tput sgr0)"
-    read -n 1 -s
-}
+#================================================================
+#   SYSTEM      : Linux
+#   DESCRIPTION : Linux 系统维护和优化多合一工具脚本
+#   AUTHOR      : Gemini
+#   CREATED     : 2025-07-16
+#================================================================
 
-# Function to update the system
-function update_system() {
-    if command -v apt-get &> /dev/null; then
-        sudo apt-get update && sudo apt-get upgrade -y
-    elif command -v yum &> /dev/null; then
-        sudo yum update -y
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# 检查是否以root权限运行
+if [[ $EUID -ne 0 ]]; then
+   echo -e "${RED}错误：此脚本必须以root权限运行！${NC}" 
+   echo -e "请尝试使用 'sudo ./toolkit.sh' 命令运行。"
+   exit 1
+fi
+
+# 功能1: 显示系统信息
+function show_system_info() {
+    echo -e "${BLUE}==============================================================${NC}"
+    echo -e "${GREEN}                        系统信息概览                          ${NC}"
+    echo -e "${BLUE}==============================================================${NC}"
+    
+    # 操作系统
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        echo -e "${YELLOW}操作系统       :${NC} $PRETTY_NAME"
+    elif [ -f /etc/redhat-release ]; then
+        echo -e "${YELLOW}操作系统       :${NC} `cat /etc/redhat-release`"
     else
-        echo "Unsupported package manager."
+        echo -e "${YELLOW}操作系统       :${NC} `uname -s`"
     fi
+
+    # 内核版本
+    echo -e "${YELLOW}内核版本       :${NC} `uname -r`"
+    
+    # CPU 信息
+    echo -e "${YELLOW}CPU型号        :${NC} `lscpu | grep 'Model name' | cut -d: -f2- | sed 's/^[ \t]*//'`"
+    echo -e "${YELLOW}CPU核心数      :${NC} `lscpu | grep '^CPU(s):' | awk '{print $2}'`"
+    
+    # 内存使用
+    mem_total=$(free -h | awk '/^Mem:/ {print $2}')
+    mem_used=$(free -h | awk '/^Mem:/ {print $3}')
+    mem_percent=$(free -m | awk '/^Mem:/ {printf "%.2f%%", $3/$2*100}')
+    echo -e "${YELLOW}内存           :${NC} ${mem_used} / ${mem_total} (${mem_percent})"
+
+    # 硬盘使用
+    echo -e "${YELLOW}硬盘使用       :${NC}"
+    df -h | awk '$NF=="/"{printf "  - 系统根目录: %s / %s (%s)\n", $3, $2, $5}'
+    
+    # 系统运行时间
+    echo -e "${YELLOW}系统运行时间   :${NC} `uptime -p | cut -d' ' -f2-`"
+    
+    # IP地址
+    echo -e "${YELLOW}IP地址         :${NC} `hostname -I | awk '{print $1}'`"
+    
+    echo -e "${BLUE}==============================================================${NC}"
+    read -p "按任意键返回主菜单..."
 }
 
-# Function to clean the system
-function clean_system() {
-    if command -v apt-get &> /dev/null; then
-        sudo apt-get autoclean
-        sudo apt-get autoremove -y
-    elif command -v yum &> /dev/null; then
-        sudo package-cleanup --oldkernels --count=1
+# 功能2: 更新与清理系统
+function update_and_clean() {
+    echo -e "${BLUE}开始更新和清理系统...${NC}"
+    
+    if command -v apt-get > /dev/null; then
+        # 基于 Debian/Ubuntu 的系统
+        echo -e "${GREEN}检测到 APT 包管理器 (Debian/Ubuntu)...${NC}"
+        apt-get update -y
+        echo -e "${GREEN}正在升级软件包...${NC}"
+        apt-get upgrade -y
+        echo -e "${GREEN}正在清理无用的软件包...${NC}"
+        apt-get autoremove -y
+        apt-get clean
+        
+    elif command -v dnf > /dev/null; then
+        # 基于 RHEL/CentOS 8+ 的系统
+        echo -e "${GREEN}检测到 DNF 包管理器 (CentOS/RHEL 8+)...${NC}"
+        dnf update -y
+        echo -e "${GREEN}正在清理无用的软件包...${NC}"
+        dnf autoremove -y
+        dnf clean all
+        
+    elif command -v yum > /dev/null; then
+        # 基于 RHEL/CentOS 7 的系统
+        echo -e "${GREEN}检测到 YUM 包管理器 (CentOS/RHEL 7)...${NC}"
+        yum update -y
+        echo -e "${GREEN}正在清理无用的软件包...${NC}"
+        yum autoremove -y
+        yum clean all
+        
     else
-        echo "Unsupported package manager."
+        echo -e "${RED}错误：未检测到支持的包管理器 (apt, dnf, yum)！${NC}"
+        return 1
     fi
+    
+    echo -e "${GREEN}系统更新和清理完成！${NC}"
+    read -p "按任意键返回主菜单..."
 }
 
-# Function to enable BBR acceleration
+# 功能3: 开启BBR
 function enable_bbr() {
-    if [[ $(uname -s) == "Linux" ]]; then
-        if [[ $(lsb_release -is) == "Ubuntu" || $(lsb_release -is) == "Debian" ]]; then
-            echo "正在检查当前内核版本..."
-            current_kernel=$(uname -r | awk -F. '{print $1"."$2}')
-            if [[ $(echo "$current_kernel >= 4.9" | bc -l) -eq 1 ]]; then
-                echo "当前内核版本大于等于4.9，支持BBR。"
-                echo "正在检查是否已开启BBR..."
-                if [[ $(sysctl net.ipv4.tcp_congestion_control | grep "bbr") ]]; then
-                    echo "BBR已开启，无需重复操作。"
-                else
-                    echo "正在开启BBR..."
-                    sudo modprobe tcp_bbr
-                    echo "tcp_bbr" | sudo tee -a /etc/modules-load.d/modules.conf
-                    echo "net.core.default_qdisc=fq" | sudo tee -a /etc/sysctl.conf
-                    echo "net.ipv4.tcp_congestion_control=bbr" | sudo tee -a /etc/sysctl.conf
-                    sudo sysctl -p
-                    echo "BBR已成功开启。"
-                fi
-            else
-                echo "当前内核版本小于4.9，不支持BBR。请先升级内核版本。"
-            fi
-        else
-            echo "此功能仅支持Ubuntu和Debian系统。"
-        fi
-    else
-        echo "Unsupported operating system."
+    echo -e "${BLUE}开始配置BBR加速...${NC}"
+    
+    # 1. 检查内核版本
+    kernel_version=$(uname -r | cut -d- -f1)
+    required_version="4.9"
+    
+    if [ "$(printf '%s\n' "$required_version" "$kernel_version" | sort -V | head -n1)" != "$required_version" ]; then
+        echo -e "${RED}错误：您的内核版本 (${kernel_version}) 过低。${NC}"
+        echo -e "${YELLOW}BBR 需要 Linux 内核版本 4.9 或更高。请先升级内核。${NC}"
+        read -p "按任意键返回主菜单..."
+        return 1
     fi
+    echo -e "${GREEN}内核版本 ${kernel_version}，满足要求。${NC}"
+
+    # 2. 检查并修改 sysctl.conf
+    if ! grep -q "net.core.default_qdisc=fq" /etc/sysctl.conf; then
+        echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
+    fi
+    
+    if ! grep -q "net.ipv4.tcp_congestion_control=bbr" /etc/sysctl.conf; then
+        echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
+    fi
+    
+    # 3. 应用配置
+    echo -e "${GREEN}正在应用配置...${NC}"
+    sysctl -p > /dev/null 2>&1
+    
+    # 4. 验证结果
+    current_congestion_control=$(sysctl -n net.ipv4.tcp_congestion_control)
+    if [ "$current_congestion_control" == "bbr" ]; then
+        echo -e "${GREEN}成功！BBR已开启。${NC}"
+        echo -e "当前TCP拥塞控制算法: ${YELLOW}${current_congestion_control}${NC}"
+    else
+        echo -e "${RED}错误：BBR开启失败。${NC}"
+        echo -e "请检查 /etc/sysctl.conf 文件中的配置是否正确。"
+    fi
+    
+    read -p "按任意键返回主菜单..."
 }
 
-# Main script
-while true; do
-    clear
-    echo "选择要执行的操作："
-    echo "1. 显示系统信息"
-    echo "2. 更新系统和软件包并清理系统"
-    echo "3. 开启BBR加速（仅限Ubuntu和Debian）"
-    echo "0. 退出"
-    read choice
+# 功能4: 系统调优
+function tune_system() {
+    echo -e "${BLUE}开始进行系统内核和网络调优...${NC}"
+    
+    cat > /etc/sysctl.d/99-tuning.conf << EOF
+# 系统文件描述符限制
+fs.file-max = 1000000
+fs.nr_open = 1000000
 
-    case $choice in
-        1)
-            display_system_info
-            ;;
-        2)
-            if [[ $(uname -s) == "Linux" ]]; then
-                update_system
-                clean_system
-                # 使用tput命令设置文本颜色为黄色
-                echo "$(tput setaf 3)更新系统和软件包并清理系统的工作已完成，按任意键继续...$(tput sgr0)"
-                read -n 1 -s
-            else
-                echo "Unsupported operating system."
-            fi
-            ;;
-        3)
-            enable_bbr
-            # 使用tput命令设置文本颜色为黄色
-            echo "$(tput setaf 3)按任意键继续...$(tput sgr0)"
-            read -n 1 -s
-            ;;
-        0)
-            exit 0
-            ;;
-        *)
-            echo "无效的选择"
-            # 使用tput命令设置文本颜色为黄色
-            echo "$(tput setaf 3)按任意键继续...$(tput sgr0)"
-            read -n 1 -s
-            ;;
-    esac
-done
+# TCP/IP 网络栈优化
+net.core.netdev_max_backlog = 262144
+net.core.somaxconn = 65535
+
+# 内存相关
+net.core.wmem_default = 8388608
+net.core.rmem_default = 8388608
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+vm.swappiness = 10
+
+# TCP 连接优化
+net.ipv4.ip_local_port_range = 1024 65535
+net.ipv4.tcp_max_syn_backlog = 16384
+net.ipv4.tcp_max_tw_buckets = 5000
+net.ipv4.tcp_keepalive_time = 600
+net.ipv4.tcp_keepalive_probes = 3
+net.ipv4.tcp_keepalive_intvl = 15
+
+# 开启 TIME-WAIT 套接字重用，对于作为客户端的连接有益
+net.ipv4.tcp_tw_reuse = 1
+
+# 开启SYN Cookies，防止SYN洪水攻击
+net.ipv4.tcp_syncookies = 1
+
+# 关闭TCP时间戳（在某些NAT环境下可能导致问题，按需开启）
+# net.ipv4.tcp_timestamps = 0
+EOF
+
+    # 应用配置
+    sysctl --system > /dev/null 2>&1
+    
+    # 修改limits.conf
+    if ! grep -q "* soft nofile 1000000" /etc/security/limits.conf; then
+        echo "* soft nofile 1000000" >> /etc/security/limits.conf
+    fi
+    if ! grep -q "* hard nofile 1000000" /etc/security/limits.conf; then
+        echo "* hard nofile 1000000" >> /etc/security/limits.conf
+    fi
+    
+    echo -e "${GREEN}系统调优完成！${NC}"
+    echo -e "${YELLOW}注意：文件描述符限制 (nofile) 的更改需要重新登录或重启系统才能对所有进程生效。${NC}"
+    read -p "按任意键返回主菜单..."
+}
+
+
+# 主菜单
+function main_menu() {
+    while true; do
+        clear
+        echo -e "${BLUE}==============================================================${NC}"
+        echo -e "${GREEN}           Linux 系统维护和优化脚本 (By Gemini)           ${NC}"
+        echo -e "${BLUE}==============================================================${NC}"
+        echo -e " ${YELLOW}1.${NC} 显示系统信息"
+        echo -e " ${YELLOW}2.${NC} 更新与清理系统"
+        echo -e " ${YELLOW}3.${NC} 开启BBR加速"
+        echo -e " ${YELLOW}4.${NC} 内核与网络调优"
+        echo -e " ${YELLOW}0.${NC} 退出脚本"
+        echo -e "${BLUE}==============================================================${NC}"
+        read -p "请输入您的选择 [0-4]: " choice
+        
+        case $choice in
+            1)
+                show_system_info
+                ;;
+            2)
+                update_and_clean
+                ;;
+            3)
+                enable_bbr
+                ;;
+            4)
+                tune_system
+                ;;
+            0)
+                echo -e "${GREEN}感谢使用，再见！${NC}"
+                exit 0
+                ;;
+            *)
+                echo -e "${RED}无效输入，请输入 0-4 之间的数字。${NC}"
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+# 脚本入口
+main_menu
